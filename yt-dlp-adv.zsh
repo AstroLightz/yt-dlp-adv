@@ -431,8 +431,8 @@ function yt-dlp-adv
       fi
 
     done
-
-    # New line for prettyness
-    echo
   fi
+
+  # New line for prettyness
+  echo
 }
