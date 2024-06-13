@@ -209,11 +209,122 @@ function yt-dlp-adv
     fi
   fi
 
+  # Get the current user's home directory
+  USER_HOME=$(echo ~)
+
+  # Replace the tilde with the full home directory path in $output_dir
+  output_dir_full=$(echo "$output_dir" | sed "s|^~/|$USER_HOME/|")
+
+  # Get ext in lower
+  ext_lower=$(echo "$ext" | tr '[:upper:]' '[:lower:]')
+
   # Arrays for storing information about provided URL
   titles=()
   urls=()
   uploaders=()
   statuses=()
+
+  # Extract all info from the yt_url
+  while IFS= read -r line; do
+    title=$(echo "$line" | cut -d '|' -f1 | tr -d '[:cntrl:]')
+    uploader=$(echo "$line" | cut -d '|' -f2 | tr -d '[:cntrl:]')
+    url=$(echo "$line" | cut -d '|' -f3)
+    titles+=("$title")
+    uploaders+=("$uploader")
+
+    # Only collect URLS if in Playlist mode
+    if [[ $item_count == "1" ]]; then
+      urls+=("$url")
+    fi
+
+    statuses+=("Pending")
+
+  done < <(yt-dlp --flat-playlist --print "%(title)s|%(uploader)s|%(url)s" "$yt_url" 2>/dev/null)
+
+  # If not in Playlist mode, add yt_url to urls
+  if [[ $item_count == "2" ]]; then
+    urls+="$yt_url"
+  fi
+
+  # Check if the filename (Single Item) or Playlist Directory already exists
+  duplicate=""
+
+  case $item_count in
+    1)
+      # Playlist check
+
+      # Get playlist name
+      playlist_name=$(yt-dlp --flat-playlist --print "%(playlist_title)s" "$yt_url" 2>/dev/null | awk 'NR==1 {print; exit}')
+
+      if [[ -d "${output_dir_full}Playlists/${playlist_name}" ]]; then
+        # Dir exists
+
+        echo -e "\n${YELLOW}?${RESET} The playlist ${CYAN}'${playlist_name}'${RESET} already exists. Do you want to redownload it?"
+        echo -n "> ${MAGENTA}[y/N]${RESET}: "
+        read duplicate
+
+        # duplicate checks
+        if [[ "$duplicate" == "y" ]] || [[ "$duplicate" == "Y" ]]; then
+          # Do redownload
+          echo -e "\n${BLUE}➜${RESET} Redownloading. Please wait..."
+
+          # Delete previous playlist (danger command :P)
+          target_playlist="${output_dir_full}Playlists/${playlist_name}"
+          rm -rf "$target_playlist"
+
+
+        else
+          # Default to no
+          echo -e "\n${GREEN}✔${RESET} Playlist is already downloaded to ${CYAN}'${output_dir}Playlists/'${RESET}."
+          return 0
+        fi
+
+      fi
+      ;;
+
+    2)
+      # Single Item check
+
+      # Get correct filename format and save it as file path
+      if [[ $filename_format == "2" ]] || [[ $dwn_type == "3" ]]; then
+        # Format: (title).(ext)
+        single_file="${output_dir_full}Singles/${titles[1]}.${ext_lower}"
+        item_name="${titles[1]}.${ext_lower}"
+      else
+        # Default Format: (uploader) - (title).(ext)
+        single_file="${output_dir_full}Singles/${uploaders[1]} - ${titles[1]}.${ext_lower}"
+        item_name="${uploaders[1]} - ${titles[1]}.${ext_lower}"
+
+        # Remove special characters that might be part of filenames
+        single_file=$(echo "$single_file" | tr -d '[:cntrl:]')
+      fi
+
+      if [ -f "$single_file" ]; then
+        # File exists
+
+        echo -e "\n${YELLOW}?${RESET} The item ${CYAN}'${item_name}'${RESET} already exists. Do you want to redownload it?"
+        echo -n "> ${MAGENTA}[y/N]${RESET}: "
+        read duplicate
+
+        # duplicate checks
+        if [[ "$duplicate" == "y" ]] || [[ "$duplicate" == "Y" ]]; then
+          # Do redownload
+          echo -e "\n${BLUE}➜${RESET} Redownloading. Please wait..."
+
+          # Delete previous item (danger command :P)
+          target_item="$single_file"
+          rm -f "$target_item"
+
+
+        else
+          # Default to no
+          echo -e "\n${GREEN}✔${RESET} Item is already downloaded to ${CYAN}'${output_dir}Singles/'${RESET}."
+          return 0
+        fi
+
+      fi
+      ;;
+  esac
 
   # Determine output dir based on if item is single or playlist. Default to singles
   case $item_count in
@@ -222,30 +333,10 @@ function yt-dlp-adv
       playlist_name=$(yt-dlp --flat-playlist --print "%(playlist_title)s" "$yt_url" 2>/dev/null | awk 'NR==1 {print; exit}')
 
       output_dir+="Playlists/${playlist_name}/"
-
-      # Extract all the titles of a video in a playlist
-      while IFS= read -r line; do
-        title=$(echo "$line" | cut -d '|' -f1 | tr -d '[:cntrl:]')
-        uploader=$(echo "$line" | cut -d '|' -f2 | tr -d '[:cntrl:]')
-        url=$(echo "$line" | cut -d '|' -f3)
-        titles+=("$title")
-        uploaders+=("$uploader")
-        urls+=("$url")
-        statuses+=("Pending")
-
-      done < <(yt-dlp --flat-playlist --print "%(title)s|%(uploader)s|%(url)s" "$yt_url" 2>/dev/null)
       ;;
 
     *)
       output_dir+="Singles/"
-
-      # Extract title and url of single video
-      title=$(yt-dlp --print "%(title)s" "$yt_url" 2>/dev/null | tr -d '[:cntrl:]')
-      uploader=$(yt-dlp --print "%(uploader)s" "$yt_url" 2>/dev/null | tr -d '[:cntrl:]')
-      titles+=("$title")
-      uploaders+=("$uploader")
-      urls+=("$yt_url")
-      statuses+=("Pending")
       ;;
 
   esac
@@ -272,7 +363,7 @@ function yt-dlp-adv
     echo -ne "${YELLOW}($(($i))/${#titles[@]})${RESET} Downloading: ${CYAN}'${title}'${RESET} ... "
 
     # Execute the download command
-    eval "yt-dlp $yt_dlp_options \"$url\"" > /dev/null 2>&1
+    eval "yt-dlp $yt_dlp_options \"$url\"" >/dev/null 2>&1
 
     if [ $? -eq 0 ]; then
       statuses[$i]="Completed"
@@ -285,12 +376,6 @@ function yt-dlp-adv
 
   done
 
-  # Get the current user's home directory
-  USER_HOME=$(echo ~)
-
-  # Replace the tilde with the full home directory path in $output_dir
-  output_dir_full=$(echo "$output_dir" | sed "s|^~/|$USER_HOME/|")
-
   # Get the size of the playlist or single item
   if [[ $item_count == "1" ]]; then
     # For playlists, calculate the size of the entire directory
@@ -298,9 +383,6 @@ function yt-dlp-adv
     download_size_mb=$(awk "BEGIN {printf \"%.2f\", $download_size_bytes / 1048576}")
 
   else
-
-    # Get ext in lower
-    ext_lower=$(echo "$ext" | tr '[:upper:]' '[:lower:]')
 
     # For single items, calculate the size based on the filename format chosen
     if [[ $filename_format == "2" ]]; then
@@ -336,7 +418,7 @@ function yt-dlp-adv
   done
 
   # Summary display
-  echo -ne "\n\n\n${GREEN}✔${RESET} ${YELLOW}${completed_count}${RESET} out of ${YELLOW}${#titles[@]}${RESET} item(s) downloaded successfully. "
+  echo -ne "\n\n\n${GREEN}✔${RESET} ${YELLOW}${completed_count}${RESET} out of ${YELLOW}${#titles[@]}${RESET} item(s) downloaded successfully to ${CYAN}'${output_dir}'${RESET}. "
   echo -e "Used ${YELLOW}${download_size_mb} MB${RESET} of storage."
 
   # Number of failed downloads display
@@ -349,6 +431,8 @@ function yt-dlp-adv
       fi
 
     done
-  fi
 
+    # New line for prettyness
+    echo
+  fi
 }
