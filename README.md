@@ -1,7 +1,7 @@
 # YouTube Downloader: Advanced
 A user-friendly, menu-driven ZSH script for yt-dlp
 
-### [NEWS: Python remake of this script coming soon](https://github.com/AstroLightz/yt-dlp-adv2)
+### IMPORTANT: This Script is now deprecated. Please use the [Python Remake](https://github.com/AstroLightz/yt-dlp-adv2) instead.
 
 ### User-Friendly Prompts
 ![yt script prompts](https://github.com/AstroLightz/yt-dlp-adv/assets/35205155/cd4bc52f-ddd4-45bc-b911-9d1a553ea16d)
